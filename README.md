@@ -38,10 +38,20 @@
 
 最好将sidecar证书安装进你使用的ca证书库，其证书路径为 `~/.dev-sidecar/dev-sidecar.ca.crt`
 
-比如在Linux系统中，可以将证书复制到 `/usr/local/share/ca-certificates/` 目录下，并运行 `sudo update-ca-certificates` 来更新系统的CA证书库。
+比如在Ubuntu系统中，可以将证书复制到 `/usr/local/share/ca-certificates/` 目录下，并运行 `sudo update-ca-certificates` 来更新系统的CA证书库。
+
+在ArchLinux中，可以将证书复制到 `/etc/ca-certificates/trust-source/anchors/` 目录下，并运行 `sudo update-ca-trust` 来更新系统的CA证书库。
 
 如果希望Python信任，可以将证书路径添加到环境变量 `SSL_CERT_FILE` 中：
 
 ```bash
 export SSL_CERT_FILE=~/.dev-sidecar/dev-sidecar.ca.crt
 ```
+
+或者也可以直接patch Python 的 certifi 包：
+
+```bash
+python -m certifi
+```
+
+执行后会输出certifi的证书路径，找到这个路径，将sidecar的证书内容追加到这个文件末尾即可。
