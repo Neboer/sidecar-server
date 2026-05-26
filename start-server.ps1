@@ -1,0 +1,1 @@
+pnpm --filter @docmirror/dev-sidecar-cli start
