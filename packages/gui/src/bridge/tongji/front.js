@@ -1,3 +1,5 @@
+import { createFallbackIpcRenderer, getIpcRenderer } from '../../view/electron.js'
+
 /**
  * second step
  * @param {*} ipcRenderer
@@ -56,7 +58,7 @@ export default {
   install (app, api, router) {
     const BAIDU_SITE_ID = 'f2d170ce560aef0005b689f28697f852'
     // 百度统计
-    const { ipcRenderer } = require('electron')
+    const ipcRenderer = getIpcRenderer() || createFallbackIpcRenderer()
     ebtRenderer(ipcRenderer, BAIDU_SITE_ID, router)
   },
   ebtRenderer,

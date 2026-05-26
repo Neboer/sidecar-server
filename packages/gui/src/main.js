@@ -1,14 +1,16 @@
 import antd from 'ant-design-vue'
 import { createApp } from 'vue';
 import { createRouter, createWebHashHistory } from 'vue-router';
-import { ipcRenderer } from 'electron'
 import view from './view'
 import App from './view/App.vue'
 import DsContainer from './view/components/container'
 import routes from './view/router'
+import { createFallbackIpcRenderer, getIpcRenderer } from './view/electron.js'
 import 'ant-design-vue/dist/reset.css'
 import './view/style/index.scss'
 import './view/style/theme/dark.scss' // 暗色主题
+
+const ipcRenderer = getIpcRenderer() || createFallbackIpcRenderer()
 
 try {
   window.onerror = (message, source, lineno, colno, error) => {

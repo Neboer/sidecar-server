@@ -1,8 +1,10 @@
 <script>
-import { ipcRenderer } from 'electron'
 import { ProfileOutlined, SyncOutlined, CheckOutlined } from '@ant-design/icons-vue'
 import Plugin from '../mixins/plugin'
 import { colorTheme } from '../composables/theme'
+import { createFallbackIpcRenderer, getIpcRenderer } from '../electron.js'
+
+const ipcRenderer = getIpcRenderer() || createFallbackIpcRenderer()
 
 export default {
   name: 'Setting',

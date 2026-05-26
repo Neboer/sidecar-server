@@ -1,10 +1,123 @@
-import { ipcRenderer, shell } from 'electron'
 import lodash from 'lodash'
 import path from 'path'
+import { createFallbackIpcRenderer, getIpcRenderer, getShell } from './electron.js'
 
 let inited = false
 let apiObj = null
+const electronIpcRenderer = getIpcRenderer()
+const ipcRenderer = electronIpcRenderer || createFallbackIpcRenderer()
+const shell = getShell()
+
+function createBrowserFallbackApi () {
+  return {
+    ipc: {
+      on: ipcRenderer.on,
+      removeAllListeners: ipcRenderer.removeAllListeners,
+      invoke: async () => undefined,
+      postMessage: ipcRenderer.postMessage,
+      send: ipcRenderer.send,
+      async openExternal () {
+        return undefined
+      },
+      openPath () {
+        return undefined
+      },
+    },
+    setting: {
+      async load () {
+        return {}
+      },
+      async save () {
+        return undefined
+      },
+    },
+    status: {
+      async get () {
+        return {
+          server: { enabled: false },
+          proxy: { enabled: false },
+          plugin: { node: {} },
+        }
+      },
+    },
+    config: {
+      async get () {
+        return { app: {} }
+      },
+      async save (newConfig = {}) {
+        return { allConfig: newConfig }
+      },
+      async reload () {
+        return { app: {} }
+      },
+      async update (partConfig = {}) {
+        return partConfig
+      },
+      async resetDefault () {
+        return { app: {} }
+      },
+      async removeUserConfig () {
+        return undefined
+      },
+    },
+    info: {
+      async get () {
+        return {
+          version: 'browser',
+          configProfiles: {
+            internal: {},
+            sharedRemote: {},
+            personalRemote: {},
+          },
+        }
+      },
+      async getConfigDir () {
+        return ''
+      },
+      async getLogDir () {
+        return ''
+      },
+      async getSystemPlatform () {
+        return 'browser'
+      },
+    },
+    plugin: {
+      git: {
+        isEnabled () {
+          return false
+        },
+        async close () {
+          return undefined
+        },
+        async start () {
+          return undefined
+        },
+      },
+    },
+    proxy: {
+      async restart () {
+        return undefined
+      },
+    },
+    server: {
+      async restart () {
+        return undefined
+      },
+    },
+    autoStart: {
+      enabled () {
+        return undefined
+      },
+    },
+  }
+}
+
 export function apiInit (app) {
+  if (!electronIpcRenderer) {
+    apiObj = createBrowserFallbackApi()
+    return Promise.resolve(apiObj)
+  }
+
   const invoke = (api, args) => {
     return ipcRenderer.invoke('apiInvoke', [api, args]).catch((e) => {
       const notification = app.config.globalProperties.$notification
@@ -36,10 +149,14 @@ export function apiInit (app) {
       },
       send,
       async openExternal (href) {
-        await shell.openExternal(href)
+        if (shell) {
+          await shell.openExternal(href)
+        }
       },
       openPath (file) {
-        shell.openPath(path.resolve(file))
+        if (shell) {
+          shell.openPath(path.resolve(file))
+        }
       },
     },
   }

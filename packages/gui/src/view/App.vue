@@ -2,10 +2,12 @@
 import { h } from 'vue';
 import * as Icons from '@ant-design/icons-vue';
 
-import { ipcRenderer } from 'electron'
 import createMenus from '@/view/router/menu'
 import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { colorTheme } from './composables/theme'
+import { createFallbackIpcRenderer, getIpcRenderer } from './electron.js'
+
+const ipcRenderer = getIpcRenderer() || createFallbackIpcRenderer()
 
 export default {
   name: 'App',

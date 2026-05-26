@@ -1,12 +1,9 @@
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import process from 'node:process'
-import { setTimeout as delay } from 'node:timers/promises'
 
 const guiDir = process.cwd()
 const require = createRequire(import.meta.url)
-
-const devServerUrl = 'http://localhost:8080'
 const state = {
   closing: false,
   devServer: null,
@@ -19,6 +16,16 @@ function spawnCommand (entry, args = [], extraEnv = {}) {
     env: { ...process.env, ...extraEnv },
     shell: false,
     stdio: 'inherit',
+    windowsHide: false,
+  })
+}
+
+function spawnDevServerCommand (entry, args = [], extraEnv = {}) {
+  return spawn(entry, args, {
+    cwd: guiDir,
+    env: { ...process.env, ...extraEnv },
+    shell: false,
+    stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: false,
   })
 }
@@ -56,6 +63,57 @@ async function waitForServer (url, child) {
   throw new Error(`Timed out waiting for ${url}`)
 }
 
+async function detectDevServerUrl (child) {
+  return new Promise((resolve, reject) => {
+    let resolved = false
+    let buffer = ''
+
+    const finish = (url) => {
+      if (!resolved) {
+        resolved = true
+        resolve(url)
+      }
+    }
+
+    const inspectChunk = (chunk) => {
+      const text = chunk.toString()
+      process.stdout.write(text)
+      buffer += text
+
+      const match = buffer.match(/https?:\/\/localhost:(\d+)/i)
+      if (match) {
+        finish(`http://localhost:${match[1]}`)
+      }
+
+      if (buffer.length > 8192) {
+        buffer = buffer.slice(-4096)
+      }
+    }
+
+    child.stdout.on('data', inspectChunk)
+    child.stderr.on('data', (chunk) => {
+      const text = chunk.toString()
+      process.stderr.write(text)
+      buffer += text
+
+      const match = buffer.match(/https?:\/\/localhost:(\d+)/i)
+      if (match) {
+        finish(`http://localhost:${match[1]}`)
+      }
+
+      if (buffer.length > 8192) {
+        buffer = buffer.slice(-4096)
+      }
+    })
+
+    child.on('exit', (code, signal) => {
+      if (!resolved) {
+        reject(new Error(`Dev server exited before its URL was detected (code=${code}, signal=${signal || ''})`))
+      }
+    })
+  })
+}
+
 function stopChild (child) {
   if (!child || child.exitCode != null || child.signalCode != null) {
     return
@@ -85,8 +143,7 @@ process.on('SIGTERM', () => {
 async function main () {
   const vueCliServiceBin = resolveVueCliServiceBin()
   const electronBin = resolveElectronBin()
-
-  state.devServer = spawnCommand(process.execPath, [vueCliServiceBin, 'serve', '--port', '8080'])
+  state.devServer = spawnDevServerCommand(process.execPath, [vueCliServiceBin, 'serve'])
   state.devServer.on('exit', (code, signal) => {
     if (!state.closing) {
       void shutdown(code ?? (signal ? 1 : 0))
@@ -94,6 +151,8 @@ async function main () {
   })
 
   try {
+    const devServerUrl = await detectDevServerUrl(state.devServer)
+    console.log(`Dev server URL: ${devServerUrl}`)
     await waitForServer(devServerUrl, state.devServer)
     state.electron = spawnCommand(electronBin, ['.'], {
       WEBPACK_DEV_SERVER_URL: devServerUrl,
