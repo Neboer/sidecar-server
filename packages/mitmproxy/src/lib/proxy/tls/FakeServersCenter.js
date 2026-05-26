@@ -9,6 +9,12 @@ const compatible = require('../compatible/compatible')
 
 const pki = forge.pki
 
+function getCertificateChainPem (cert, caCert) {
+  const certPem = pki.certificateToPem(cert)
+  const caCertPem = caCert ? pki.certificateToPem(caCert) : ''
+  return certPem + caCertPem
+}
+
 // IPv4地址检测正则，提前编译，避免在 getDnsName 中重复创建。
 // 不使用 /g 标志：此处只做存在性检测（.test()），无需记录 lastIndex 状态。
 const IPv4_RE = /\b(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\b){3}/
@@ -118,7 +124,7 @@ module.exports = class FakeServersCenter {
           const certObj = await this.certAndKeyContainer.getCertPromise(hostname, port, dnsName, mappingHostNames)
           cert = certObj.cert
           key = certObj.key
-          const certPem = pki.certificateToPem(cert)
+          const certPem = getCertificateChainPem(cert, this.certAndKeyContainer.issuerCA.cert)
           const keyPem = pki.privateKeyToPem(key)
           const secureContext = tls.createSecureContext({ key: keyPem, cert: certPem })
           fakeServer = new https.Server({

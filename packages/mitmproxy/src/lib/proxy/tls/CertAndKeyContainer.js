@@ -22,6 +22,7 @@ module.exports = class CertAndKeyContainer {
     })
     this.caCert = caCert
     this.caKey = caKey
+    this.issuerCA = tlsUtils.createIssuerCA(this.caKey, this.caCert, 'DevSidecar - TLS issuer')
   }
 
   addCertPromise (certPromiseObj) {
@@ -38,7 +39,7 @@ module.exports = class CertAndKeyContainer {
     }
 
     log.info(`【CreateFakeCertificate】dnsName: ${dnsName}, hostname: ${hostname}:${port}`)
-    const promise = tlsUtils.createFakeCertificateByDomain(this.caKey, this.caCert, dnsName, mappingHostNames)
+    const promise = tlsUtils.createFakeCertificateByDomain(this.issuerCA.key, this.issuerCA.cert, dnsName, mappingHostNames)
 
     this.addCertPromise({
       dnsName,

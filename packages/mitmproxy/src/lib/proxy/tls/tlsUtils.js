@@ -25,6 +25,33 @@ async function generateForgeRsaKeyPair () {
   return { privateKey: forgePrivateKey, publicKey: forgePublicKey }
 }
 
+  function buildCertificateAttrs (CN) {
+    return [{
+      name: 'commonName',
+      value: CN,
+    }, {
+      name: 'countryName',
+      value: 'CN',
+    }, {
+      shortName: 'ST',
+      value: 'GuangDong',
+    }, {
+      name: 'localityName',
+      value: 'ShenZhen',
+    }, {
+      name: 'organizationName',
+      value: 'dev-sidecar',
+    }, {
+      shortName: 'OU',
+      value: 'https://github.com/docmirror/dev-sidecar',
+    }]
+  }
+
+  function getSubjectKeyIdentifierBytes (cert) {
+    const skiExt = cert.getExtension('subjectKeyIdentifier')
+    return skiExt && skiExt.subjectKeyIdentifier ? forge.util.hexToBytes(skiExt.subjectKeyIdentifier) : null
+  }
+
 // const os = require('os')
 // let username = 'dev-sidecar'
 // try {
@@ -42,25 +69,7 @@ utils.createCA = function (CN) {
   cert.validity.notBefore = new Date(Date.now() - (60 * 60 * 1000))
   cert.validity.notAfter = new Date()
   cert.validity.notAfter.setFullYear(cert.validity.notAfter.getFullYear() + 20)
-  const attrs = [{
-    name: 'commonName',
-    value: CN,
-  }, {
-    name: 'countryName',
-    value: 'CN',
-  }, {
-    shortName: 'ST',
-    value: 'GuangDong',
-  }, {
-    name: 'localityName',
-    value: 'ShenZhen',
-  }, {
-    name: 'organizationName',
-    value: 'dev-sidecar',
-  }, {
-    shortName: 'OU',
-    value: 'https://github.com/docmirror/dev-sidecar',
-  }]
+  const attrs = buildCertificateAttrs(CN)
   cert.setSubject(attrs)
   cert.setIssuer(attrs)
   cert.setExtensions([{
@@ -73,10 +82,51 @@ utils.createCA = function (CN) {
     keyCertSign: true,
   }, {
     name: 'subjectKeyIdentifier',
+  }, {
+    name: 'authorityKeyIdentifier',
+    keyIdentifier: true,
+    authorityCertIssuer: true,
   }])
 
   // self-sign certificate
   cert.sign(keys.privateKey, forge.md.sha256.create())
+
+  return {
+    key: keys.privateKey,
+    cert,
+  }
+}
+
+utils.createIssuerCA = function (rootKey, rootCert, CN) {
+  const keys = pki.rsa.generateKeyPair(2048)
+  const cert = pki.createCertificate()
+  cert.publicKey = keys.publicKey
+  cert.serialNumber = `${Date.now() + 1}`
+  cert.validity.notBefore = new Date(Date.now() - (60 * 60 * 1000))
+  cert.validity.notAfter = new Date()
+  cert.validity.notAfter.setFullYear(cert.validity.notAfter.getFullYear() + 20)
+  const attrs = buildCertificateAttrs(CN)
+  const rootSubjectKeyIdentifier = getSubjectKeyIdentifierBytes(rootCert)
+  cert.setSubject(attrs)
+  cert.setIssuer(rootCert.subject.attributes)
+  cert.setExtensions([{
+    name: 'basicConstraints',
+    critical: true,
+    cA: true,
+  }, {
+    name: 'keyUsage',
+    critical: true,
+    keyCertSign: true,
+    cRLSign: true,
+  }, {
+    name: 'subjectKeyIdentifier',
+  }, {
+    name: 'authorityKeyIdentifier',
+    keyIdentifier: rootSubjectKeyIdentifier,
+    authorityCertIssuer: true,
+  }])
+
+  cert.sign(rootKey, forge.md.sha256.create())
 
   return {
     key: keys.privateKey,
@@ -128,6 +178,8 @@ utils.createFakeCertificateByDomain = async function (caKey, caCert, domain, map
     value: 'https://github.com/docmirror/dev-sidecar',
   }]
 
+  const issuerSubjectKeyIdentifier = getSubjectKeyIdentifierBytes(caCert)
+
   cert.setIssuer(caCert.subject.attributes)
   cert.setSubject(attrs)
 
@@ -163,6 +215,7 @@ utils.createFakeCertificateByDomain = async function (caKey, caCert, domain, map
     timeStamping: true,
   }, {
     name: 'authorityKeyIdentifier',
+    keyIdentifier: issuerSubjectKeyIdentifier,
   }])
   cert.sign(caKey, forge.md.sha256.create())
 
@@ -261,9 +314,27 @@ utils.getMappingHostNamesFromCert = function (cert) {
 
 // sync
 utils.initCA = function ({ caCertPath, caKeyPath }) {
+  function isValidCACertificate (caCertPem) {
+    const caCert = forge.pki.certificateFromPem(caCertPem)
+    const basicConstraints = caCert.getExtension('basicConstraints')
+    const ski = caCert.getExtension('subjectKeyIdentifier')
+    const aki = caCert.getExtension('authorityKeyIdentifier')
+
+    return Boolean(
+      basicConstraints && basicConstraints.cA === true &&
+      ski &&
+      aki,
+    )
+  }
+
   try {
     fs.accessSync(caCertPath, fs.F_OK)
     fs.accessSync(caKeyPath, fs.F_OK)
+
+    const caCertPem = fs.readFileSync(caCertPath)
+    if (!isValidCACertificate(caCertPem)) {
+      throw new Error('Existing CA certificate is missing required extensions')
+    }
 
     // has exist
     return {
